@@ -171,9 +171,20 @@ def _post_page(session: requests.Session, date_str: str, page: int) -> str:
     raise KindBlocked(f"KIND 연결 실패: {last_error}")
 
 
-def fetch_date(session: requests.Session, date_str: str, debug_dir: Optional[Path]) -> Tuple[List[Dict[str, Any]], int]:
+def should_have_rows(date_str: str) -> bool:
+    """그날 공시가 0건이면 이상하다고 볼 수 있는 시점인지.
+
+    새벽·주말·휴일에는 당일 공시가 0건일 수 있으므로 정상으로 본다.
+    평일 오전 10시~오후 6시(한국시간)에 오늘 목록이 비어 있을 때만 오류로 본다.
+    """
+    now = rules.now_kst()
+    return date_str == now.date().isoformat() and now.weekday() < 5 and 10 <= now.hour < 18
+
+
+def fetch_date(session: requests.Session, date_str: str, debug_dir: Optional[Path],
+               max_pages: int = MAX_PAGES) -> Tuple[List[Dict[str, Any]], int]:
     collected, seen = [], set()
-    for page in range(1, MAX_PAGES + 1):
+    for page in range(1, max_pages + 1):
         page_html = _post_page(session, date_str, page)
         if debug_dir and page == 1:
             debug_dir.mkdir(parents=True, exist_ok=True)
@@ -183,24 +194,27 @@ def fetch_date(session: requests.Session, date_str: str, debug_dir: Optional[Pat
         seen.update(r["접수번호"] for r in fresh)
         collected.extend(fresh)
         if len(rows) < PAGE_SIZE or not fresh:
-            if page == 1 and not rows and "<table" in page_html.lower() \
-                    and not any(m in page_html for m in EMPTY_MARKERS) and "openDisclsViewer" not in page_html:
-                # 표는 있는데 공시도, '결과 없음' 안내도 없다 → 화면 구조가 바뀌었을 가능성
-                raise KindBlocked("KIND 화면에서 공시 행을 찾지 못했습니다 (화면 구조 변경 가능성)",
+            if page == 1 and not rows and should_have_rows(date_str):
+                # 평일 장중인데 공시가 한 건도 읽히지 않는다 → 화면 구조가 바뀌었을 가능성
+                raise KindBlocked("KIND 화면에서 공시 행을 찾지 못했습니다 (평일 장중 0건 — 화면 구조 변경 가능성)",
                                   200, page_html[:20000])
             return collected, page
         time.sleep(PAGE_DELAY_SECONDS)
-    return collected, MAX_PAGES
+    return collected, max_pages
 
 
 def cmd_fetch(args) -> int:
     now = rules.now_kst()
+    # (날짜, 읽을 최대 페이지 수)
     if args.date:
-        dates = [args.date]
+        plan = [(args.date, MAX_PAGES)]
     else:
-        dates = [now.date().isoformat()]
-        if now.hour == 0:  # 자정 직후에는 전날 늦은 공시도 한 번 더 확인
-            dates.insert(0, (now.date() - timedelta(days=1)).isoformat())
+        plan = [(now.date().isoformat(), MAX_PAGES)]
+        if now.hour < 12:
+            # 전날 마지막 확인 뒤(예: 23:55 확인 후 23:57)에 올라온 공시를 놓치지 않도록
+            # 정오 전 실행에서는 전날 목록도 확인한다. 최신순이라 늦은 공시는 첫 페이지에 있다.
+            plan.insert(0, ((now.date() - timedelta(days=1)).isoformat(), 1))
+    dates = [d for d, _ in plan]
     debug_dir = Path(args.debug_dir) if args.debug_dir else None
     result = {"ok": False, "checked_at": now.isoformat(), "dates": dates,
               "rows": [], "pages": {}, "error": "", "http_status": None}
@@ -211,8 +225,8 @@ def cmd_fetch(args) -> int:
             session.get(MAIN_URL, timeout=(10, 30))  # 일반 화면 접속과 같은 쿠키 확보
         except requests.RequestException:
             pass
-        for date_str in dates:
-            rows, pages = fetch_date(session, date_str, debug_dir)
+        for date_str, max_pages in plan:
+            rows, pages = fetch_date(session, date_str, debug_dir, max_pages)
             result["rows"].extend(rows)
             result["pages"][date_str] = pages
             time.sleep(PAGE_DELAY_SECONDS)

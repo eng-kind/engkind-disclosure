@@ -1,13 +1,13 @@
 {
- "last_run": "2026-11-26T16:11:04+09:00",
+ "last_run": "2026-11-26T17:45:17+09:00",
  "ok": true,
  "dates": [
   "2026-11-26"
  ],
- "fetched_rows": 250,
- "new_rows": 147,
- "message": "신규 147건",
+ "fetched_rows": 401,
+ "new_rows": 151,
+ "message": "신규 151건",
  "http_status": null,
- "last_success": "2026-11-26T16:11:04+09:00",
+ "last_success": "2026-11-26T17:45:17+09:00",
  "consecutive_failures": 0
 }

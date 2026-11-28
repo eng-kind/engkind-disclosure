@@ -1,13 +1,13 @@
 {
- "last_run": "2026-11-28T18:50:43+09:00",
- "ok": true,
+ "last_run": "2026-11-28T19:49:56+09:00",
+ "ok": false,
  "dates": [
   "2026-11-28"
  ],
  "fetched_rows": 0,
  "new_rows": 0,
- "message": "신규 0건",
- "http_status": null,
+ "message": "KIND가 접속을 거부했습니다 (HTTP 403)",
+ "http_status": 403,
  "last_success": "2026-11-28T18:50:43+09:00",
- "consecutive_failures": 0
+ "consecutive_failures": 1
 }
